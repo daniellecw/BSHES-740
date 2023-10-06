@@ -59,7 +59,7 @@ count(tweetall,'lang')
 *get languages
 
 ```{r grep, echo=FALSE}
-pat <- c("methadone|suboxone|fentanyl|fentanil|methodone|suboxen|suboxin|methadose|dolophine|actiq|duragesic|sublimaze")
+pat <- c("methadone|suboxone|fentanyl|fentanil|methodone|suboxen|suboxin|methadose|dolophine|actiq|duragesic|fentora")
 sum(grepl(pat, tweets_set1$text,ignore.case=TRUE))
 sum(grepl(pat, tweets_set2$text,ignore.case=TRUE))
 ```
