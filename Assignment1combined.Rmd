@@ -1,0 +1,378 @@
+---
+title: "Assignment 1"
+author: "Danielle Wu"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+## Assignment 1
+
+```{r libraries}
+library (lsa)
+library(tm)
+library(rtweet)
+library(wordcloud)
+library(ggplot2)
+library(tokenizers)
+library(plyr)
+library(Rgraphviz)
+```
+* load libraries
+
+```{r data, echo=FALSE}
+tweets_set1 <- read.csv("TADA_A1_set1.csv")
+tweets_set2 <- read.csv("TADA_A1_set2.csv")
+
+tweet_text1 <- tweets_set1$text
+tweet_text2 <- tweets_set2$text
+
+tweetall <- rbind(tweets_set1,tweets_set2)
+```
+* load data
+
+```{r summary, echo=FALSE}
+#file information, total posts
+summary(tweets_set1)
+summary(tweets_set2)
+```
+* view csv contents
+
+```{r date, echo=FALSE}
+#date range for tweets
+min(tweets_set1$date)
+max(tweets_set1$date)
+
+min(tweets_set2$date)
+max(tweets_set2$date)
+tweets_set2 <- tweets_set2[-c(177826),]
+max(tweets_set2$date)
+```
+*remove bad row and get date range 
+
+```{r lang, echo=FALSE}
+unique(tweetall$lang)
+
+count(tweetall,'lang')
+```
+*get languages
+
+```{r grep, echo=FALSE}
+pat <- c("methadone|suboxone|fentanyl|fentanil|methodone|suboxen|suboxin|methadose|dolophine|actiq|duragesic|sublimaze")
+sum(grepl(pat, tweets_set1$text,ignore.case=TRUE))
+sum(grepl(pat, tweets_set2$text,ignore.case=TRUE))
+```
+* tweets mentioning methadone, suboxone, or fentanyl
+
+```{r suboxone, echo=FALSE}
+sub <-c("suboxone|suboxen|suboxin|buprenorphine-naloxone")
+
+sum(grepl(sub, tweets_set1$text,ignore.case=TRUE))
+sum(grepl(sub, tweets_set2$text,ignore.case=TRUE))
+```
+* tweets mentioning suboxone
+
+```{r methadone, echo=FALSE}
+methadone <- ("methadone|methodone|methadose|dolophine")
+
+sum(grepl(methadone, tweets_set1$text,ignore.case=TRUE))
+sum(grepl(methadone, tweets_set2$text,ignore.case=TRUE))
+```
+* tweets mentioning methadon
+
+```{r fent, echo=FALSE}
+fentanyl <- ("fentanyl|fentanil|actiq|duragesic|fentora")
+sum(grepl(fentanyl, tweets_set1$text,ignore.case=TRUE))
+sum(grepl(fentanyl, tweets_set2$text,ignore.case=TRUE))
+```
+* tweets mentioning fentanyl 
+
+```{r analogs, echo=FALSE}
+fent_text1 <- tweet_text1[c(grep(fentanyl, tweet_text1,ignore.case=TRUE))]
+fent_text2 <- tweet_text2[c(grep(fentanyl, tweet_text2,ignore.case=TRUE))]
+
+fent_text <- append(fent_text1,fent_text2)
+
+
+analogs <- c("acetylfent|butyrfent|carfent|alfent|sufent|remifent|isofent|furanylfent|methylfent|acryloylfent|alfent|flurofent|furanylfent|fluorofent")
+sum(grepl(analogs, fent_text,ignore.case=TRUE))
+```
+* tweets mentioning fentanyl analogs
+
+# Subxone Tweet Set 
+```{r subset1, echo=FALSE}
+sub_text1 <- tweet_text1[c(grep(sub, tweet_text1,ignore.case=TRUE))]
+sub_text2 <- tweet_text2[c(grep(sub, tweet_text2,ignore.case=TRUE))]
+
+sub_text <- append(sub_text1,sub_text2)
+
+```
+* load suboxone related tweets
+
+```{r preprocesssub1, echo=FALSE}
+subcorpus_corpus1 <- VCorpus(VectorSource(sub_text))
+
+#preprocessing: lowercase
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, content_transformer(tolower))
+#remove stop words 
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, removeWords, stopwords("en"))
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, removeWords, stopwords("ca"))
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, removeWords, stopwords("es"))
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, removeWords, stopwords("fr"))
+#preprocessing: remove punctuation
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, removePunctuation)
+#preprocessing:remove numbers
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, removeNumbers)
+#preprocessing: remove stems
+subcorpus_corpus1 <- tm_map(subcorpus_corpus1, stemDocument)
+```
+* suboxone-set 1 preprocess
+
+```{r dtmsub1, echo=FALSE}
+dtmsub1<-removeSparseTerms(DocumentTermMatrix(subcorpus_corpus1),0.995)
+inspect(dtmsub1)
+freqterms <- findFreqTerms(dtmsub1, lowfreq = 950)
+print(freqterms)
+
+findAssocs(dtmsub1,"suboxon",0.04)
+```
+* create document term matrix
+* find associations
+
+```{r sub1_new, echo=FALSE}
+myStopwords <- c("suboxon","suboxin","suboxen","buprenorphinenaloxon")
+subcorpus_corpus1_new <- tm_map(subcorpus_corpus1, removeWords, myStopwords)
+
+wordcloud(subcorpus_corpus1_new, min.freq=800, max.words=15, scale=c(3,.1), random.order=FALSE, colors=brewer.pal(12, "Set3"))
+```
+* add new suboxone stop words
+* generate word cloud
+
+
+# Methadone Tweet Set 1
+```{r methtext1, echo=FALSE}
+meth_text1 <- tweet_text1[c(grep(methadone, tweet_text1,ignore.case=TRUE))]
+meth_text2 <- tweet_text2[c(grep(methadone, tweet_text2,ignore.case=TRUE))]
+
+meth_text <- append(meth_text1,meth_text2)
+```
+* load methadone tweets
+
+```{r premeth, echo=FALSE}
+#preprocess subtext
+meth_corpus1 <- VCorpus(VectorSource(meth_text))
+
+#preprocessing: lowercase
+meth_corpus1 <- tm_map(meth_corpus1, content_transformer(tolower))
+#remove stop words 
+meth_corpus1 <- tm_map(meth_corpus1, removeWords, stopwords("en"))
+meth_corpus1 <- tm_map(meth_corpus1, removeWords, stopwords("ca"))
+meth_corpus1 <- tm_map(meth_corpus1, removeWords, stopwords("es"))
+meth_corpus1 <- tm_map(meth_corpus1, removeWords, stopwords("fr"))
+
+#preprocessing: remove punctuation
+meth_corpus1 <- tm_map(meth_corpus1, removePunctuation)
+#preprocessing:remove numbers
+meth_corpus1 <- tm_map(meth_corpus1, removeNumbers)
+#preprocessing: remove stems
+meth_corpus1 <- tm_map(meth_corpus1, stemDocument)
+```
+* preprocessing
+
+```{r dtmmeth1, echo=FALSE}
+dtmmeth1 <-removeSparseTerms(DocumentTermMatrix(meth_corpus1),0.995)
+inspect(dtmmeth1)
+findAssocs(dtmmeth1,c("methadon","methodon"),0.01)
+
+freqterms <- findFreqTerms(dtmmeth1, lowfreq = 400)
+print(freqterms)
+```
+* create document term matrix
+* find associations
+* find freqent terms
+
+
+```{r meth1new, echo=FALSE}
+myStopwords <- c("methadon","methodon","methados","dolophin")
+meth_corpus1_new <- tm_map(meth_corpus1, removeWords, myStopwords)
+
+
+wordcloud(meth_corpus1_new, min.freq=400, max.words=15, scale=c(3,.1), random.order=FALSE, colors=brewer.pal(12, "Set3"))
+```
+* add new stop words
+* generate word cloud
+
+
+# Fentanyl Tweet Set 
+```{r fenttext1, echo=FALSE}
+fent_text1 <- tweet_text1[c(grep(fentanyl, tweet_text1,ignore.case=TRUE))]
+fent_text2 <- tweet_text2[c(grep(fentanyl, tweet_text2,ignore.case=TRUE))]
+
+fent_text <- append(fent_text1,fent_text2)
+```
+* load fentanyl data
+
+```{r prefent1, echo=FALSE}
+#preprocess subtext
+fent_corpus1 <- VCorpus(VectorSource(fent_text))
+
+#preprocessing: lowercase
+fent_corpus1 <- tm_map(fent_corpus1, content_transformer(tolower))
+#remove stop words 
+fent_corpus1 <- tm_map(fent_corpus1, removeWords, stopwords("en"))
+fent_corpus1 <- tm_map(fent_corpus1, removeWords, stopwords("ca"))
+fent_corpus1 <- tm_map(fent_corpus1, removeWords, stopwords("es"))
+fent_corpus1 <- tm_map(fent_corpus1, removeWords, stopwords("fr"))
+
+#preprocessing: remove punctuation
+fent_corpus1 <- tm_map(fent_corpus1, removePunctuation)
+#preprocessing:remove numbers
+fent_corpus1 <- tm_map(fent_corpus1, removeNumbers)
+#preprocessing: remove stems
+fent_corpus1 <- tm_map(fent_corpus1, stemDocument)
+```
+* preprocessing
+
+
+```{r dtmfent1, echo=FALSE}
+dtmfent1 <-removeSparseTerms(DocumentTermMatrix(fent_corpus1),0.995)
+inspect(dtmfent1)
+findAssocs(dtmfent1,c("fentanyl","fentanil","fentan"),0.01)
+
+freqterms <- findFreqTerms(dtmfent1, lowfreq = 5000)
+print(freqterms)
+```
+* create doc term matrix
+* find associations
+* find frequent terms
+
+
+```{r fentnew1, echo=FALSE}
+myStopwords <- c("fentanyl","fentanil")
+fent_corpus1_new <- tm_map(fent_corpus1, removeWords, myStopwords)
+
+
+wordcloud(fent_corpus1_new, min.freq=3000, max.words=15, scale=c(3,.1), random.order=FALSE, colors=brewer.pal(12, "Set3"))
+```
+* add new stop words
+* generate word cloud
+
+
+# Fentanyl Bigrams
+```{r token, echo=FALSE}
+BigramTokenizer <-
+  function(x)
+    unlist(lapply(ngrams(words(x), 2), paste, collapse = "_"), use.names = FALSE)
+```
+* Bigram Tokenizer
+```{r fentbigram1, echo=FALSE}
+dtm_bigramfent1 <- removeSparseTerms(TermDocumentMatrix(fent_corpus1, control = list(tokenize = BigramTokenizer)),0.995)
+```
+* create bigram tdm
+
+```{r fentbigramplot1, echo=FALSE}
+y <- as.matrix(dtm_bigramfent1 )
+ysum <- rowSums(y)
+
+par(mar=c(10,6,4,1)+.1)
+barplot(sort(ysum,decreasing=TRUE)[1:10],las=2,xlab ="Bigrams", 
+        main = "Frequency of Bigrams in Fentanyl Tweets", mgp=c(8,.3,0))
+
+title(ylab="Frequency", line=3, cex.lab=1.2)
+```
+* plot frequency
+
+# Suboxone Bigrams 
+```{r subbi1, echo=FALSE}
+dtm_bigramsub1 <- removeSparseTerms(TermDocumentMatrix(subcorpus_corpus1, control = list(tokenize = BigramTokenizer)),0.995)
+```
+* create bigram tdm
+
+```{r subbiplot1, echo=FALSE}
+y <- as.matrix(dtm_bigramsub1 )
+ysum <- rowSums(y)
+
+par(mar=c(10,6,4,1)+.1)
+barplot(sort(ysum,decreasing=TRUE)[1:10],las=2,xlab ="Bigrams", 
+        main = "Frequency of Bigrams in Suboxone Tweets", mgp=c(8,.3,0))
+
+title(ylab="Frequency", line=3, cex.lab=1.2)
+```
+* plot frequency
+
+# Methadone Bigrams Tweet Set 1
+```{r methbi1, echo=FALSE}
+dtm_bigrammeth1 <- removeSparseTerms(TermDocumentMatrix(meth_corpus1, control = list(tokenize = BigramTokenizer)),0.995)
+```
+* create bigram tdm
+
+```{r methbiplot1, echo=FALSE}
+y <- as.matrix(dtm_bigrammeth1 )
+ysum <- rowSums(y)
+
+par(mar=c(10,6,4,1)+.1)
+barplot(sort(ysum,decreasing=TRUE)[1:10],las=2,xlab ="Bigrams", 
+        main = "Frequency of Bigrams in Methadone Tweets", mgp=c(8,.3,0))
+
+title(ylab="Frequency", line=3, cex.lab=1.2)
+```
+* plot frequency
+
+
+# Methadone Time Series
+```{r methadonetime, echo=FALSE}
+meth_text1 <- tweets_set1[c(grep(methadone, tweets_set1$text,ignore.case=TRUE)),]
+meth_text2 <- tweets_set2[c(grep(methadone, tweets_set2$text,ignore.case=TRUE)),]
+meth_text <- rbind(meth_text1,meth_text2)
+meth_text$date <- as.Date(meth_text$date, format = "%Y-%m-%d")
+summary(meth_text)
+```
+* load and combine tweet sets
+* format date
+
+```{r mtimeplot, echo=FALSE}
+#time frequency
+freqs <- aggregate(meth_text$date, by=list(meth_text$date), FUN=length) 
+freqs$date <- as.Date(freqs$Group.1, format="%Y-%m-%d") 
+ggplot(freqs, aes(x=date, y=x)) + geom_line() + ylab("Frequency") + xlab("Date (Nov 2019 - Apr 2020) ") + theme_minimal() + labs( title ="Frequency of Methdone-related Tweets by Date")
+```
+* plot frequency
+
+# Suboxone Time Series
+```{r suboxonetime, echo=FALSE}
+sub_text1 <- tweets_set1[c(grep(sub, tweets_set1$text,ignore.case=TRUE)),]
+sub_text2 <- tweets_set2[c(grep(sub, tweets_set2$text,ignore.case=TRUE)),]
+sub_text <- rbind(sub_text1,sub_text2)
+sub_text$date <- as.Date(sub_text$date, format = "%Y-%m-%d")
+summary(sub_text)
+```
+* load and combine tweet sets
+* format date
+
+```{r stimeplot, echo=FALSE}
+#time frequency
+freqs <- aggregate(sub_text$date, by=list(sub_text$date), FUN=length) 
+freqs$date <- as.Date(freqs$Group.1, format="%Y-%m-%d") 
+ggplot(freqs, aes(x=date, y=x)) + geom_line() + ylab("Frequency") + xlab("Date (Nov 2019 - Apr 2020) ") + theme_minimal() + labs( title ="Frequency of Suboxone-related Tweets by Date")
+```
+* plot frequency
+
+# Fentanyl Time Series
+```{r fentanyltime, echo=FALSE}
+fenttext1 <- tweets_set1[c(grep(fentanyl, tweets_set1$text,ignore.case=TRUE)),]
+fenttext2 <- tweets_set2[c(grep(fentanyl, tweets_set2$text,ignore.case=TRUE)),]
+fenttext<- rbind(fenttext1,fenttext2)
+fenttext$date <- as.Date(fenttext$date, format = "%Y-%m-%d")
+```
+* load and combine tweet sets
+* format date
+
+```{r ftimeplot, echo=FALSE}
+#time frequency
+freqs <- aggregate(fenttext$date, by=list(fenttext$date), FUN=length) 
+freqs$date <- as.Date(freqs$Group.1, format="%Y-%m-%d") 
+ ggplot(freqs, aes(x=date, y=x)) + geom_line() + ylab("Frequency") + xlab("Date (Nov 2019 - Apr 2020) ") + theme_minimal() + labs( title ="Frequency of Fentanyl-related Tweets by Date")
+```
+* plot frequency
+
