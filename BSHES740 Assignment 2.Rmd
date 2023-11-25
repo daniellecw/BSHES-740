@@ -1,0 +1,293 @@
+---
+title: "Assignment 2"
+output: html_document
+date: "2023-11-11"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r message=FALSE, warning=FALSE}
+library(dplyr)
+library(caTools)
+library(rfUtilities)
+library(tm)
+library(mlapi)
+library(e1071)
+library(SnowballC)
+library(caret)
+library(ggplot2)
+```
+
+* load dataset
+```{r}
+annotated_dataset <- read.csv('Datasets/TADA_Annotated_data.csv')
+unlabeled_dataset <- read.csv('Datasets/TADA_unlabeled_data.csv')
+```
+
+* load and preprocess text
+```{r}
+all_texts <-annotated_dataset$text
+all_texts_corpus <- VCorpus(VectorSource(all_texts))
+all_texts_corpus <- tm_map(all_texts_corpus, content_transformer(function(x) iconv(enc2utf8(x), sub = "byte")))
+all_texts_corpus <- tm_map(all_texts_corpus, content_transformer(tolower))
+all_texts_corpus <- tm_map(all_texts_corpus, removePunctuation)
+all_texts_corpus <- tm_map(all_texts_corpus, removeWords,stopwords("english"))
+all_texts_corpus <- tm_map(all_texts_corpus, stemDocument)
+length(all_texts_corpus)
+```
+
+```{r}
+NLP_tokenizer <- function(x) {
+  unlist(lapply(ngrams(words(x), 1:3), paste, collapse = "_"), use.names = FALSE)
+}
+n_gram_corpus <- tm_map(all_texts_corpus,content_transformer(NLP_tokenizer))
+```
+
+* view corpus and content
+```{r}
+length(n_gram_corpus)
+n_gram_corpus[[2]]$content
+```
+
+* split the sets 
+```{r}
+set.seed(1234)
+split <- sample.split(annotated_dataset$class,SplitRatio = 0.8)
+training_corpus <- subset(n_gram_corpus, split==TRUE)
+training_classes <- subset(annotated_dataset$class, split==TRUE)
+
+eval_corpus <- subset(n_gram_corpus, split==FALSE)
+eval_classes <- subset(annotated_dataset$class, split==FALSE)
+
+split2 <- sample.split(eval_classes,SplitRatio = 0.5)
+validation_corpus <- subset(eval_corpus, split2==TRUE)
+validation_classes <- subset(eval_classes, split2==TRUE)
+  
+test_corpus <- subset(eval_corpus, split2==FALSE)
+test_classes <- subset(eval_classes, split2==FALSE)
+```
+
+* create document-term matrix for the training set and remove sparse n-grams.
+```{r}
+training_dtm <- DocumentTermMatrix(training_corpus)
+training_dtm_sparse <- removeSparseTerms(training_dtm,0.995)
+```
+
+* generate document-term matrix for validation set and test set using columns from training set 
+```{r}
+validation_dtm_sparse <- DocumentTermMatrix(validation_corpus, list(dictionary=colnames(training_dtm_sparse)))
+test_dtm_sparse <- DocumentTermMatrix(test_corpus, list(dictionary=colnames(training_dtm_sparse)))
+```
+
+* convert to data frames 
+```{r}
+training_df <- as.data.frame(as.matrix(training_dtm_sparse))
+validation_df <- as.data.frame(as.matrix(validation_dtm_sparse))
+test_df <- as.data.frame(as.matrix(test_dtm_sparse))
+colnames(training_df) <- make.names(colnames(training_df))
+colnames(validation_df) <- make.names(colnames(validation_df))
+colnames(test_df) <- make.names(colnames(test_df))
+training_df$class <- training_classes
+training_df$class <- as.factor(training_df$class)
+```
+
+
+* SVM- radial kernel
+```{r}
+i = 1
+while  (i <= 64){ 
+  trained_model <- svm(class ~., data=training_df,cost=i,kernel = "radial")
+  predictions <- predict(trained_model, newdata=validation_df)
+  print(i)
+  print(accuracy(validation_classes,predictions))
+i = i*2
+}
+```
+
+* SVM cost of 4
+```{r}
+best_trained_model_svm <- svm(class ~., data=training_df,cost=4,kernel = "radial")
+best_predictions_svm <- predict(best_trained_model_svm, newdata=test_df)
+```
+
+*SVM accuracy and confusion matrix
+```{r}
+print(accuracy(test_classes,best_predictions_svm))
+confusionMatrix(best_predictions_svm,as.factor(test_classes),mode="everything")
+```
+
+* k-nearest neighbor
+```{r}
+i = 1
+while  (i <= 64){ 
+  trained_model <- gknn(class ~., data=training_df,k = i,method = "Manhattan")
+  predictions <- predict(trained_model, newdata=validation_df)
+  print(i)
+  print(accuracy(validation_classes,predictions))
+i = i*2
+}
+```
+
+* knn cost of 8
+```{r}
+best_trained_model_knn <- gknn(class ~., data=training_df,k = 8, method = "Manhattan")
+best_predictions_knn <- predict(best_trained_model_knn, newdata=test_df)
+```
+
+* knn accuracy and confusion matrix
+```{r}
+print(accuracy(test_classes,best_predictions_knn))
+confusionMatrix(best_predictions_knn,as.factor(test_classes),mode="everything")
+```
+
+* naive Bayes
+```{r}
+trained_model <- naiveBayes(class ~., data=training_df)
+predictions_nb <- predict(trained_model, newdata=validation_df,type = "class")
+```
+
+* naive Bayes accuracy and confusion matrix
+```{r}
+print(accuracy(validation_classes,predictions))
+confusionMatrix(predictions_nb,as.factor(test_classes),mode="everything")
+```
+
+
+
+*preprocess unlabeled data
+```{r}
+all_texts_unlabeled <-unlabeled_dataset$text
+all_texts_corpus_unlabeled <- VCorpus(VectorSource(all_texts_unlabeled))
+all_texts_corpus_unlabeled <- tm_map(all_texts_corpus_unlabeled, content_transformer(function(x) iconv(enc2utf8(x), sub = "byte")))
+all_texts_corpus_unlabeled <- tm_map(all_texts_corpus_unlabeled, content_transformer(tolower))
+all_texts_corpus_unlabeled <- tm_map(all_texts_corpus_unlabeled, removePunctuation)
+all_texts_corpus_unlabeled <- tm_map(all_texts_corpus_unlabeled, removeWords,stopwords("english"))
+all_texts_corpus_unlabeled <- tm_map(all_texts_corpus_unlabeled, stemDocument)
+length(all_texts_corpus_unlabeled)
+```
+
+* create bigrams
+```{r}
+n_gram_corpus_unlabeled <- tm_map(all_texts_corpus_unlabeled,content_transformer(NLP_tokenizer))
+```
+
+* generate DTM
+```{r}
+unlabeled_dtm <- DocumentTermMatrix(n_gram_corpus_unlabeled,list(dictionary=colnames(training_dtm_sparse)))
+```
+
+* convert to data frames 
+```{r}
+unlabeled_df <- as.data.frame(as.matrix(unlabeled_dtm))
+colnames(unlabeled_df) <- make.names(colnames(unlabeled_df))
+```
+
+* classify unlabeled data
+```{r}
+predictions_unlabeled_svm <- predict(best_trained_model_svm, newdata=unlabeled_df)
+```
+
+```{r}
+summary(predictions_unlabeled_svm)
+```
+
+* map labels to data
+```{r}
+new_labeled_data <- cbind(unlabeled_dataset,predictions_unlabeled_svm)
+colnames(new_labeled_data)[colnames(new_labeled_data) == "predictions_unlabeled_svm"] = "class"
+```
+
+```{r}
+cityA_set <- new_labeled_data[new_labeled_data$city == "A",]
+cityB_set <- new_labeled_data[new_labeled_data$city == "B",]
+```
+
+```{r}
+pop_A <- 500000
+pop_B <- 10000
+```
+
+```{r}
+table(cityA_set$class)
+table(cityB_set$class)
+```
+
+
+```{r}
+F_set <- new_labeled_data[new_labeled_data$gender_id == "F",]
+F_set<- F_set %>%
+  mutate(class = recode(class, "0" = "Non-medical use", "1" = "Consumption", "2" = "Information/mention", "3" = "Unrelated"))
+M_set <- new_labeled_data[new_labeled_data$gender_id == "M",]
+M_set<- M_set %>%
+  mutate(class = recode(class, "0" = "Non-medical use", "1" = "Consumption", "2" = "Information/mention", "3" = "Unrelated"))
+summary(F_set)
+summary(M_set)
+```
+
+```{r}
+table(F_set$class)
+table(M_set$class)
+```
+
+```{r}
+ggplot(F_set, aes(x = class)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Frequency Distribution", x = "Categories", y = "Frequency")
+```
+
+```{r}
+ggplot(M_set, aes(x = class)) +
+  geom_bar(fill = "skyblue", color = "black") +
+  labs(title = "Frequency Distribution", x = "Categories", y = "Frequency")
+```
+
+* city A tweet distribution
+```{r}
+frequency_tableA <- table(cityA_set$class)
+adjusted_frequencyA<- frequency_tableA / pop_A
+
+# Create a data frame for plotting
+plot_data <- data.frame(
+  Class = names(adjusted_frequencyA),
+  Frequency = as.numeric(adjusted_frequencyA)
+)
+
+plot_data<- plot_data %>%
+  mutate(Class = recode(Class, "0" = "Non-medical use", "1" = "Consumption", "2" = "Information/mention", "3" = "Unrelated"))
+
+# Create a bar plot
+ggplot(plot_data, aes(x = Class, y = Frequency)) +
+  geom_bar(stat = "identity", fill = "white", color = "black") +
+   geom_text(aes(label = sprintf("%.5f", Frequency)), vjust = -0.5) +
+  labs(title = "Population-Adjusted Distribution of Tweets for City A",
+       x = "Class",
+       y = "Population-Adjusted Frequency")
+```
+
+
+*city B tweet distribution
+```{r}
+frequency_tableB <- table(cityB_set$class)
+adjusted_frequencyB<- frequency_tableB / pop_B
+
+# Create a data frame for plotting
+plot_data <- data.frame(
+  Class = names(adjusted_frequencyB),
+  Frequency = as.numeric(adjusted_frequencyB)
+)
+
+plot_data<- plot_data %>%
+  mutate(Class = recode(Class, "0" = "Non-medical use", "1" = "Consumption", "2" = "Information/mention", "3" = "Unrelated"))
+
+# Create a bar plot
+ggplot(plot_data, aes(x = Class, y = Frequency)) +
+  geom_bar(stat = "identity", fill = "white", color = "black") +
+   geom_text(aes(label = sprintf("%.5f", Frequency)), vjust = -0.5) +
+  labs(title = "Population-Adjusted Distribution¸ of Tweets for City B",
+       x = "Class",
+       y = "Population-Adjusted Frequency")
+```
+
+
